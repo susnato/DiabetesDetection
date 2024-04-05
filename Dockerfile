@@ -13,6 +13,6 @@ RUN apt-get -y update && apt-get -y --no-install-recommends install python3 pyth
 RUN tree /models
 
 # transfer the files and run the server
-CMD ["/bin/bash", "-c", "tree /models && cat /models/xgb/config.pbtxt && tritonserver --model-repository=/models --cuda-memory-pool-byte-size 0:500000000"]
+CMD ["/bin/bash", "-c", "tree /models && cat /models/xgb/config.pbtxt && tritonserver --model-repository=/models"]
 
 EXPOSE 8000
