@@ -1,11 +1,7 @@
-#pip install streamlit
-#pip install pandas
-#pip install sklearn
-
-
-# IMPORT STATEMENTSpip
 import streamlit as st
 import pandas as pd
+import xgboost
+import requests
 from PIL import Image
 import numpy as np
 import matplotlib.pyplot as plt
@@ -14,10 +10,25 @@ from sklearn.metrics import accuracy_score
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 import seaborn as sns
+import json
 
 
+MODEL_PATH = "/home/susnato/PycharmProjects/DiabetesDetection/triton_files/xgb/1/xgboost.json"
+DATA_PATH = "/home/susnato/PycharmProjects/DiabetesDetection/data/diabetes.csv"
+df = pd.read_csv(DATA_PATH)
 
-df = pd.read_csv('diabetes.csv')
+def fetch_result(test_data):
+    test_data = test_data.values.tolist()
+    data = {"inputs": [{"name": "input__0", "datatype": "FP32", "shape": [1,8], "data": test_data}]}
+    response = requests.post('http://localhost:8000/v2/models/xgb/infer', json=data)
+    response = float(json.loads(response.content.decode("utf-8"))["outputs"][0]["data"][1])
+
+    return response
+
+st.title('Diabetes')
+st.subheader('Description')
+st.write("""Diabetes occurs when your blood glucose (also known as blood sugar) levels are too high. Glucose is the primary source of energy for your body. It can come from the food you eat or be produced by your body. Insulin, a hormone made by the pancreas, helps glucose enter your cells to be used for energy.
+Uncontrolled diabetes can lead to complications such as damage to the eyes, kidneys, nerves, and heart. It’s also linked to certain types of cancer.""")
 
 # HEADINGS
 st.title('Diabetes Checkup')
@@ -28,6 +39,7 @@ st.write(df.describe())
 
 # X AND Y DATA
 x = df.drop(['Outcome'], axis = 1)
+x = x[['Insulin', 'BMI', 'Age', 'BloodPressure', 'Glucose', 'DiabetesPedigreeFunction', 'Pregnancies', 'SkinThickness']]
 y = df.iloc[:, -1]
 x_train, x_test, y_train, y_test = train_test_split(x,y, test_size = 0.2, random_state = 0)
 
@@ -43,18 +55,17 @@ def user_report():
   age = st.sidebar.slider('Age', 21,88, 33 )
 
   user_report_data = {
-      'Pregnancies':pregnancies,
-      'Glucose':glucose,
-      'BloodPressure':bp,
-      'SkinThickness':skinthickness,
       'Insulin':insulin,
       'BMI':bmi,
+      'Age': age,
+      'BloodPressure': bp,
+      'Glucose': glucose,
       'DiabetesPedigreeFunction':dpf,
-      'Age':age
+      'Pregnancies': pregnancies,
+      'SkinThickness': skinthickness,
   }
   report_data = pd.DataFrame(user_report_data, index=[0])
   return report_data
-
 
 # PATIENT DATA
 user_data = user_report()
@@ -62,22 +73,20 @@ st.subheader('Patient Data')
 st.write(user_data)
 
 
-
-
 # MODEL
-rf  = RandomForestClassifier()
-rf.fit(x_train, y_train)
-user_result = rf.predict(user_data)
+xgb_model = xgboost.XGBClassifier()
+xgb_model.load_model(MODEL_PATH)
 
+user_result = fetch_result(user_data)
+
+# user_result = xgb_model.predict_proba(user_data)[:, 1]
 
 
 # VISUALISATIONS
 st.title('Visualised Patient Report')
 
-
-
 # COLOR FUNCTION
-if user_result[0]==0:
+if user_result<=0.5:
   color = 'blue'
 else:
   color = 'red'
@@ -219,10 +228,12 @@ st.pyplot(fig_dpf)
 # OUTPUT
 st.subheader('Your Report: ')
 output=''
-if user_result[0]==0:
-  output = 'You are not Diabetic'
+if user_result<=0.5:
+  output = f'You are not Diabetic, probability: {round(user_result*100, 2)}%'
 else:
-  output = 'You are Diabetic'
+  output = f'You are Diabetic, probability: {round(user_result*100, 2)}%'
 st.title(output)
-st.subheader('Accuracy: ')
-st.write(str(accuracy_score(y_test, rf.predict(x_test))*100)+'%')
+# st.subheader('Accuracy: ')
+# print(accuracy_score(y_test, xgb_model.predict_proba(x_test)[:, 1]))
+#
+# st.write(str(accuracy_score(y_test, xgb_model.predict_proba(x_test)[:, 1])*100)+'%')
